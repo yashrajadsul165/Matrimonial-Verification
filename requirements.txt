@@ -1,7 +1,7 @@
-streamlit
-numpy
-Pillow
-pytesseract
-insightface
-onnxruntime
-opencv-python==4.10.0.84
+streamlit==1.64.0
+numpy==2.5.3
+Pillow==12.3.0
+pytesseract==0.3.13
+insightface==2.0
+onnxruntime==1.30.0
+opencv-python-headless==4.10.0.84
