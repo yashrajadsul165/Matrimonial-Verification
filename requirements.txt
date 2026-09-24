@@ -1,5 +1,5 @@
 streamlit
-opencv-python-headless
+opencv-python-headless==4.12.0.88
 numpy
 Pillow
 pytesseract
