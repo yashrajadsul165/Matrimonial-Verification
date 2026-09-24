@@ -401,7 +401,8 @@ elif page == "👤 Profile Verification":
         type=[
             "jpg",
             "jpeg",
-            "png"
+            "png",
+            "WEBP"
         ],
         key="profile_upload"
     )
