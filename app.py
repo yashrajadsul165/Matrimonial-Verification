@@ -17,15 +17,19 @@ from document_verification import (
 )
 from behavior_model import analyze_feedback
 from database import (
-    init_database,
-    authenticate_user,
-    create_user,
+    create_database,
     save_verification,
     get_all_verifications
 )
+from auth import (
+    create_auth_database,
+    create_user,
+    login_user
+)
+
 
 # =========================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # =========================================================
 
 st.set_page_config(
@@ -34,116 +38,103 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========================================================
-# DATABASE
-# =========================================================
-
-init_database()
 
 # =========================================================
-# SESSION STATE
+# CREATE REQUIRED DATABASES
 # =========================================================
 
-defaults = {
+create_database()
+create_auth_database()
+
+
+# =========================================================
+# CREATE FOLDERS
+# =========================================================
+
+os.makedirs(
+    "uploads",
+    exist_ok=True
+)
+
+os.makedirs(
+    "verification_photos",
+    exist_ok=True
+)
+
+
+# =========================================================
+# SESSION VARIABLES
+# =========================================================
+
+session_defaults = {
+
     "logged_in": False,
+
     "username": "",
-    "page": "🏠 Home",
 
     "profile_name": "",
+
     "profile_photo": None,
+
     "profile_photo_name": "",
 
+    "verification_photo": None,
+
     "face_score": None,
-    "face_result": None,
+
+    "face_result": "",
 
     "deepfake_score": None,
-    "deepfake_result": None,
+
+    "deepfake_result": "",
+
+    "deepfake_details": None,
 
     "liveness_score": None,
-    "liveness_result": None,
 
-    "document_result": None,
-    "document_name_match": None,
+    "liveness_result": "",
+
+    "document_result": "",
+
+    "document_name_match": False,
+
+    "document_text": "",
 
     "feedback_score": None,
-    "feedback_result": None,
 
-    "verification_saved": False
+    "feedback_result": "",
+
+    "verification_saved": False,
+
+    "liveness_started": False
 }
 
-for key, value in defaults.items():
+
+for key, value in session_defaults.items():
+
     if key not in st.session_state:
+
         st.session_state[key] = value
 
 
 # =========================================================
-# HELPER FUNCTIONS
+# LOGIN / REGISTRATION PAGE
 # =========================================================
 
-def reset_verification():
-    st.session_state.profile_name = ""
-    st.session_state.profile_photo = None
-    st.session_state.profile_photo_name = ""
+if not st.session_state.logged_in:
 
-    st.session_state.face_score = None
-    st.session_state.face_result = None
-
-    st.session_state.deepfake_score = None
-    st.session_state.deepfake_result = None
-
-    st.session_state.liveness_score = None
-    st.session_state.liveness_result = None
-
-    st.session_state.document_result = None
-    st.session_state.document_name_match = None
-
-    st.session_state.feedback_score = None
-    st.session_state.feedback_result = None
-
-    st.session_state.verification_saved = False
-
-
-def safe_number(value, default=0):
-    try:
-        if value is None:
-            return default
-
-        if isinstance(value, (int, float)):
-            return value
-
-        return float(value)
-
-    except Exception:
-        return default
-
-
-def safe_result(result, default_message="Analysis completed."):
-    if result is None:
-        return default_message
-
-    if isinstance(result, dict):
-        return result
-
-    return {
-        "score": safe_number(result),
-        "result": default_message,
-        "message": default_message
-    }
-
-
-# =========================================================
-# LOGIN PAGE
-# =========================================================
-
-def login_page():
-
-    st.title("💍 Matrimonial Verification System")
-
-    st.write(
-        "Secure AI-powered matrimonial profile verification system."
+    st.title(
+        "💍 Matrimonial Verification System"
     )
 
-    tab1, tab2 = st.tabs(
+    st.write(
+        "Secure AI-powered matrimonial "
+        "profile verification system."
+    )
+
+    st.divider()
+
+    login_tab, register_tab = st.tabs(
         [
             "🔐 Login",
             "📝 Create Account"
@@ -154,9 +145,11 @@ def login_page():
     # LOGIN
     # -----------------------------------------------------
 
-    with tab1:
+    with login_tab:
 
-        st.header("Login")
+        st.subheader(
+            "Login"
+        )
 
         username = st.text_input(
             "Username",
@@ -170,9 +163,8 @@ def login_page():
         )
 
         if st.button(
-            "Login",
-            type="primary",
-            use_container_width=True
+            "🔐 Login",
+            type="primary"
         ):
 
             if not username or not password:
@@ -183,66 +175,55 @@ def login_page():
 
             else:
 
-                try:
+                if login_user(
+                    username,
+                    password
+                ):
 
-                    result = authenticate_user(
-                        username,
-                        password
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+
+                    st.success(
+                        "Login successful!"
                     )
 
-                    if result:
+                    st.rerun()
 
-                        st.session_state.logged_in = True
-                        st.session_state.username = username
-                        st.session_state.page = "🏠 Home"
-
-                        st.success(
-                            "Login successful."
-                        )
-
-                        st.rerun()
-
-                    else:
-
-                        st.error(
-                            "Invalid username or password."
-                        )
-
-                except Exception as e:
+                else:
 
                     st.error(
-                        f"Login error: {str(e)}"
+                        "Invalid username or password."
                     )
 
     # -----------------------------------------------------
-    # CREATE ACCOUNT
+    # REGISTRATION
     # -----------------------------------------------------
 
-    with tab2:
+    with register_tab:
 
-        st.header("Create Account")
+        st.subheader(
+            "Create New Account"
+        )
 
         new_username = st.text_input(
-            "Choose Username",
-            key="new_username"
+            "Create username",
+            key="register_username"
         )
 
         new_password = st.text_input(
-            "Choose Password",
+            "Create password",
             type="password",
-            key="new_password"
+            key="register_password"
         )
 
         confirm_password = st.text_input(
-            "Confirm Password",
+            "Confirm password",
             type="password",
             key="confirm_password"
         )
 
         if st.button(
-            "Create Account",
-            type="primary",
-            use_container_width=True
+            "📝 Create Account"
         ):
 
             if not new_username or not new_password:
@@ -257,104 +238,87 @@ def login_page():
                     "Passwords do not match."
                 )
 
+            elif len(new_password) < 8:
+
+                st.warning(
+                    "Password must contain at least 8 characters."
+                )
+
             else:
 
-                try:
+                success, message = create_user(
+                    new_username,
+                    new_password
+                )
 
-                    result = create_user(
-                        new_username,
-                        new_password
+                if success:
+
+                    st.success(
+                        message +
+                        " You can now login."
                     )
 
-                    if result:
-
-                        st.success(
-                            "Account created successfully. "
-                            "You can now login."
-                        )
-
-                    else:
-
-                        st.error(
-                            "Username may already exist."
-                        )
-
-                except Exception as e:
+                else:
 
                     st.error(
-                        f"Account creation error: {str(e)}"
+                        message
                     )
 
-
-# =========================================================
-# MAIN APPLICATION
-# =========================================================
-
-if not st.session_state.logged_in:
-
-    login_page()
-
     st.stop()
+
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.title(
+    "💍 AI-Powered Matrimonial Photo Authenticity "
+    "and Identity Verification System"
+)
+
+st.write(
+    "AI-based profile verification, identity verification, "
+    "photo authenticity screening and matrimonial verification."
+)
 
 
 # =========================================================
 # SIDEBAR
 # =========================================================
 
-with st.sidebar:
+st.sidebar.title(
+    "🔐 Verification System"
+)
 
-    st.title("💍 Matrimonial")
+st.sidebar.success(
+    f"Logged in as: {st.session_state.username}"
+)
 
-    st.caption(
-        f"Logged in as: {st.session_state.username}"
-    )
-
-    st.divider()
-
-    pages = [
+page = st.sidebar.radio(
+    "Select Module",
+    [
         "🏠 Home",
         "👤 Profile Verification",
         "🤖 AI Face Verification",
-        "🖼️ Image Authenticity",
-        "📷 Liveness Check",
+        "🖼️ Deepfake Detection",
+        "📷 Liveness Verification",
         "📄 Document Verification",
         "💬 Feedback Analysis",
         "💞 Matching",
         "📊 Dashboard"
     ]
+)
 
-    selected_page = st.radio(
-        "Navigation",
-        pages,
-        index=pages.index(
-            st.session_state.page
-        )
-        if st.session_state.page in pages
-        else 0
-    )
+st.sidebar.divider()
 
-    st.session_state.page = selected_page
+if st.sidebar.button(
+    "🚪 Logout"
+):
 
-    st.divider()
+    st.session_state.logged_in = False
+    st.session_state.username = ""
 
-    if st.button(
-        "🚪 Logout",
-        use_container_width=True
-    ):
-
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-
-        reset_verification()
-
-        st.rerun()
-
-
-# =========================================================
-# PAGE VARIABLE
-# =========================================================
-
-page = st.session_state.page
+    st.rerun()
 
 
 # =========================================================
@@ -363,19 +327,13 @@ page = st.session_state.page
 
 if page == "🏠 Home":
 
-    st.title(
-        "💍 Matrimonial Verification System"
-    )
-
-    st.subheader(
-        "Secure AI-powered matrimonial profile verification system"
+    st.header(
+        "🏠 Welcome to the Verification System"
     )
 
     st.write(
-        """
-        This system helps verify matrimonial profiles using
-        multiple AI and verification modules.
-        """
+        "This system provides multiple verification "
+        "layers for matrimonial profiles."
     )
 
     st.divider()
@@ -385,53 +343,42 @@ if page == "🏠 Home":
     with col1:
 
         st.info(
-            """
-            ### 👤 Profile Verification
-
-            Upload and register the matrimonial profile.
-            """
+            "👤 Profile\n\n"
+            "Register and verify the user's profile photo."
         )
 
     with col2:
 
         st.info(
-            """
-            ### 🤖 AI Verification
-
-            Compare faces and analyze image authenticity.
-            """
+            "🤖 AI Verification\n\n"
+            "Compare profile and verification faces."
         )
 
     with col3:
 
         st.info(
-            """
-            ### 📄 Document Verification
-
-            Verify uploaded documents using OCR.
-            """
+            "🛡️ Authenticity\n\n"
+            "Screen photos, liveness and documents."
         )
 
     st.divider()
 
     st.subheader(
-        "Verification Modules"
+        "Verification Pipeline"
     )
 
-    modules = [
-        "👤 Profile Photo",
-        "🤖 Face Verification",
-        "🖼️ AI / Deepfake Detection",
-        "📷 Liveness Detection",
-        "📄 Document Verification",
-        "💬 Feedback Analysis"
-    ]
-
-    for module in modules:
-
-        st.write(
-            f"• {module}"
-        )
+    st.write(
+        """
+        1. 👤 Profile Registration
+        2. 🤖 AI Face Verification
+        3. 🖼️ Image Authenticity Screening
+        4. 📷 Liveness Verification
+        5. 📄 Document Verification
+        6. 💬 Feedback Analysis
+        7. 🗄️ Database Storage
+        8. 📊 Verification Dashboard
+        """
+    )
 
 
 # =========================================================
@@ -444,105 +391,98 @@ elif page == "👤 Profile Verification":
         "👤 Profile Verification"
     )
 
-    st.write(
-        "Create your matrimonial profile and upload a profile photo."
-    )
-
-    st.divider()
-
-    profile_name = st.text_input(
-        "Full Name",
+    name = st.text_input(
+        "Enter your name",
         value=st.session_state.profile_name
     )
 
-    uploaded_photo = st.file_uploader(
+    photo = st.file_uploader(
         "Upload your profile photo",
         type=[
             "jpg",
             "jpeg",
-            "png",
-            "webp",
-            "bmp"
+            "png"
         ],
-        key="profile_photo_uploader"
+        key="profile_upload"
     )
 
-    if uploaded_photo is not None:
+    if photo is not None:
 
-        try:
+        image_bytes = np.asarray(
+            bytearray(
+                photo.getvalue()
+            ),
+            dtype=np.uint8
+        )
 
-            image_bytes = uploaded_photo.getvalue()
+        image = cv2.imdecode(
+            image_bytes,
+            cv2.IMREAD_COLOR
+        )
 
-            image_array = np.frombuffer(
-                image_bytes,
-                dtype=np.uint8
-            )
-
-            image = cv2.imdecode(
-                image_array,
-                cv2.IMREAD_COLOR
-            )
-
-            if image is None:
-
-                st.error(
-                    "The uploaded file could not be read as an image."
-                )
-
-            else:
-
-                st.session_state.profile_photo = image
-                st.session_state.profile_photo_name = (
-                    uploaded_photo.name
-                )
-
-                st.image(
-                    image,
-                    channels="BGR",
-                    caption=uploaded_photo.name,
-                    width=300
-                )
-
-                st.success(
-                    "Photo uploaded successfully."
-                )
-
-        except Exception as e:
+        if image is None:
 
             st.error(
-                f"Photo upload error: {str(e)}"
-            )
-
-    if st.button(
-        "💾 Save Profile",
-        type="primary"
-    ):
-
-        if not profile_name.strip():
-
-            st.warning(
-                "Please enter your full name."
-            )
-
-        elif st.session_state.profile_photo is None:
-
-            st.warning(
-                "Please upload a profile photo."
+                "Unable to read the uploaded image."
             )
 
         else:
 
-            st.session_state.profile_name = (
-                profile_name.strip()
+            # Do not use cv2.CascadeClassifier here.
+            # Streamlit Cloud may provide an OpenCV build without
+            # the Haar-cascade API. The uploaded image is accepted
+            # and saved directly; AI face verification is handled
+            # by face_verification.py.
+            faces = []
+
+            display_image = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2RGB
+            )
+
+            st.image(
+                display_image,
+                caption="Profile Photo",
+                width=450
             )
 
             st.success(
-                "Profile saved successfully."
+                "Profile photo loaded successfully."
             )
 
-            st.info(
-                "You can now continue with the AI verification modules."
-            )
+            if name.strip() == "":
+                st.warning(
+                    "Please enter your name."
+                )
+            else:
+                if st.button(
+                    "💾 Save Profile",
+                    type="primary"
+                ):
+                    file_path = os.path.join(
+                        "uploads",
+                        photo.name
+                    )
+
+                    with open(
+                        file_path,
+                        "wb"
+                    ) as file:
+                        file.write(
+                            photo.getbuffer()
+                        )
+
+                    st.session_state.profile_name = name
+                    st.session_state.profile_photo = image
+                    st.session_state.profile_photo_name = photo.name
+
+                    st.success(
+                        "Profile photo saved successfully!"
+                    )
+
+                    st.info(
+                        "Your profile is ready for AI verification."
+                    )
 
 
 # =========================================================
@@ -552,440 +492,326 @@ elif page == "👤 Profile Verification":
 elif page == "🤖 AI Face Verification":
 
     st.header(
-        "🤖 AI Face Verification"
-    )
-
-    st.write(
-        """
-        Compare the registered profile photo with another
-        verification photo.
-        """
+        "🤖 Real AI Identity Verification"
     )
 
     if st.session_state.profile_photo is None:
 
         st.warning(
-            "Please complete Profile Verification first."
+            "First complete Profile Verification."
         )
 
     else:
 
-        st.subheader(
-            "Registered Profile Photo"
-        )
-
-        st.image(
-            st.session_state.profile_photo,
-            channels="BGR",
-            width=300
+        st.success(
+            f"Profile loaded: "
+            f"{st.session_state.profile_name}"
         )
 
         verification_photo = st.file_uploader(
-            "Upload verification/selfie photo",
+            "Upload verification photo",
             type=[
                 "jpg",
                 "jpeg",
-                "png",
-                "webp",
-                "bmp"
+                "png"
             ],
-            key="face_verification_uploader"
+            key="verification_upload"
         )
 
         if verification_photo is not None:
 
-            try:
-
-                verify_bytes = (
+            image_bytes = np.asarray(
+                bytearray(
                     verification_photo.getvalue()
-                )
-
-                verify_array = np.frombuffer(
-                    verify_bytes,
-                    dtype=np.uint8
-                )
-
-                verify_image = cv2.imdecode(
-                    verify_array,
-                    cv2.IMREAD_COLOR
-                )
-
-                if verify_image is None:
-
-                    st.error(
-                        "Unable to read verification image."
-                    )
-
-                else:
-
-                    st.image(
-                        verify_image,
-                        channels="BGR",
-                        caption=verification_photo.name,
-                        width=300
-                    )
-
-                    if st.button(
-                        "🔍 Compare Faces",
-                        type="primary"
-                    ):
-
-                        try:
-
-                            result = compare_faces(
-                                st.session_state.profile_photo,
-                                verify_image
-                            )
-
-                            result = safe_result(
-                                result
-                            )
-
-                            score = result.get(
-                                "score",
-                                result.get(
-                                    "similarity",
-                                    result.get(
-                                        "confidence",
-                                        0
-                                    )
-                                )
-                            )
-
-                            score = safe_number(
-                                score
-                            )
-
-                            if score <= 1:
-
-                                score = score * 100
-
-                            score = round(
-                                min(
-                                    max(
-                                        score,
-                                        0
-                                    ),
-                                    100
-                                ),
-                                2
-                            )
-
-                            st.session_state.face_score = score
-
-                            result_text = result.get(
-                                "result",
-                                result.get(
-                                    "message",
-                                    "Face comparison completed."
-                                )
-                            )
-
-                            st.session_state.face_result = (
-                                result_text
-                            )
-
-                            st.metric(
-                                "Face Similarity",
-                                f"{score}%"
-                            )
-
-                            st.success(
-                                result_text
-                            )
-
-                        except Exception as e:
-
-                            st.error(
-                                f"Face verification error: {str(e)}"
-                            )
-
-        except Exception as e:
-
-            st.error(
-                f"Image processing error: {str(e)}"
-            )
-
-
-# =========================================================
-# IMAGE AUTHENTICITY
-# =========================================================
-
-elif page == "🖼️ Image Authenticity":
-
-    st.header(
-        "🖼️ Image Authenticity / Deepfake Detection"
-    )
-
-    st.write(
-        """
-        Analyze an image for possible manipulation,
-        AI generation, or suspicious visual patterns.
-        """
-    )
-
-    uploaded_image = st.file_uploader(
-        "Upload image for authenticity analysis",
-        type=[
-            "jpg",
-            "jpeg",
-            "png",
-            "webp",
-            "bmp"
-        ],
-        key="deepfake_uploader"
-    )
-
-    if uploaded_image is not None:
-
-        try:
-
-            image_bytes = uploaded_image.getvalue()
-
-            image_array = np.frombuffer(
-                image_bytes,
+                ),
                 dtype=np.uint8
             )
 
-            image = cv2.imdecode(
-                image_array,
+            verification_image = cv2.imdecode(
+                image_bytes,
                 cv2.IMREAD_COLOR
             )
 
-            if image is None:
+            if verification_image is None:
 
                 st.error(
-                    "Unable to read image."
+                    "Unable to read verification image."
                 )
 
             else:
 
+                display_image = cv2.cvtColor(
+                    verification_image,
+                    cv2.COLOR_BGR2RGB
+                )
+
                 st.image(
-                    image,
-                    channels="BGR",
-                    caption=uploaded_image.name,
-                    width=400
+                    display_image,
+                    caption="Verification Photo",
+                    width=450
                 )
 
                 if st.button(
-                    "🔍 Analyze Image",
+                    "🔍 Start AI Face Verification",
                     type="primary"
                 ):
 
-                    try:
+                    with st.spinner(
+                        "AI is comparing the faces..."
+                    ):
 
-                        result = analyze_image(
-                            image
+                        score, result = compare_faces(
+                            st.session_state.profile_photo,
+                            verification_image
                         )
 
-                        result = safe_result(
+                    if score is None:
+
+                        st.error(
                             result
                         )
 
-                        score = result.get(
-                            "score",
-                            result.get(
-                                "risk_score",
-                                result.get(
-                                    "confidence",
-                                    0
-                                )
-                            )
-                        )
+                    else:
 
-                        score = safe_number(
-                            score
-                        )
+                        st.session_state.face_score = score
+                        st.session_state.face_result = result
+                        st.session_state.verification_photo = verification_image
 
-                        if score <= 1:
-
-                            score = score * 100
-
-                        score = round(
-                            min(
-                                max(
-                                    score,
-                                    0
-                                ),
-                                100
-                            ),
-                            2
-                        )
-
-                        st.session_state.deepfake_score = score
-
-                        result_text = result.get(
-                            "result",
-                            result.get(
-                                "message",
-                                "Image analysis completed."
-                            )
-                        )
-
-                        st.session_state.deepfake_result = (
-                            result_text
+                        st.subheader(
+                            "AI Verification Result"
                         )
 
                         st.metric(
-                            "Image Risk Score",
-                            f"{score}/100"
+                            "Face Similarity",
+                            f"{score}%"
                         )
 
-                        st.info(
-                            result_text
+                        if score >= 70:
+
+                            st.success(
+                                "✅ High face similarity detected."
+                            )
+
+                        elif score >= 50:
+
+                            st.warning(
+                                "⚠️ Moderate face similarity."
+                            )
+
+                        else:
+
+                            st.error(
+                                "❌ Low face similarity."
+                            )
+
+                        st.write(
+                            f"Result: {result}"
                         )
 
-                    except Exception as e:
 
-                        st.error(
-                            f"Image analysis error: {str(e)}"
-                        )
+# =========================================================
+# DEEPFAKE DETECTION
+# =========================================================
 
-        except Exception as e:
+elif page == "🖼️ Deepfake Detection":
 
-            st.error(
-                f"Image processing error: {str(e)}"
+    st.header(
+        "🖼️ AI-Generated / Manipulated Image Screening"
+    )
+
+    st.info(
+        "This is a screening layer based on image characteristics. "
+        "It should not be treated as proof that an image is fake."
+    )
+
+    if st.session_state.profile_photo is None:
+
+        st.warning(
+            "First upload a profile photo."
+        )
+
+    else:
+
+        image_file = st.file_uploader(
+            "Upload image to screen",
+            type=[
+                "jpg",
+                "jpeg",
+                "png"
+            ],
+            key="deepfake_upload"
+        )
+
+        if image_file is not None:
+
+            st.image(
+                image_file,
+                caption="Image for Authenticity Screening",
+                width=450
             )
+
+            if st.button(
+                "🔎 Analyze Image",
+                type="primary"
+            ):
+
+                with st.spinner(
+                    "Analyzing image characteristics..."
+                ):
+
+                    result = analyze_image(
+                        image_file.getvalue()
+                    )
+
+                if "error" in result:
+
+                    st.error(
+                        result["error"]
+                    )
+
+                else:
+
+                    st.session_state.deepfake_score = result[
+                        "risk_score"
+                    ]
+
+                    st.session_state.deepfake_result = result[
+                        "result"
+                    ]
+
+                    st.session_state.deepfake_details = result
+
+                    st.metric(
+                        "Screening Risk Score",
+                        f"{result['risk_score']}/100"
+                    )
+
+                    st.write(
+                        f"**Result:** {result['result']}"
+                    )
+
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+
+                        st.write(
+                            f"Sharpness: "
+                            f"{result['sharpness']}"
+                        )
+
+                    with col2:
+
+                        st.write(
+                            f"Noise level: "
+                            f"{result['noise_level']}"
+                        )
+
+                    with col3:
+
+                        st.write(
+                            f"Resolution: "
+                            f"{result['width']} × "
+                            f"{result['height']}"
+                        )
 
 
 # =========================================================
 # LIVENESS
 # =========================================================
 
-elif page == "📷 Liveness Check":
+elif page == "📷 Liveness Verification":
 
     st.header(
-        "📷 Liveness / Anti-Spoofing Check"
+        "📷 Liveness / Anti-Spoofing"
     )
 
-    st.write(
-        """
-        Upload a verification image for the liveness analysis.
-        """
+    st.warning(
+        "Current version performs basic live-image screening. "
+        "A production system should use a dedicated anti-spoofing model."
     )
 
-    liveness_photo = st.file_uploader(
-        "Upload liveness image",
-        type=[
-            "jpg",
-            "jpeg",
-            "png",
-            "webp",
-            "bmp"
-        ],
-        key="liveness_uploader"
-    )
+    if not st.session_state.liveness_started:
 
-    if liveness_photo is not None:
+        if st.button(
+            "▶️ Start Camera",
+            type="primary"
+        ):
 
-        try:
+            st.session_state.liveness_started = True
 
-            image_bytes = liveness_photo.getvalue()
+            st.rerun()
 
-            image_array = np.frombuffer(
-                image_bytes,
+    else:
+
+        camera_photo = st.camera_input(
+            "Take a live verification photo"
+        )
+
+        if camera_photo is not None:
+
+            camera_bytes = np.asarray(
+                bytearray(
+                    camera_photo.getvalue()
+                ),
                 dtype=np.uint8
             )
 
-            image = cv2.imdecode(
-                image_array,
+            camera_image = cv2.imdecode(
+                camera_bytes,
                 cv2.IMREAD_COLOR
             )
 
-            if image is None:
+            if camera_image is not None:
 
-                st.error(
-                    "Unable to read image."
+                result = analyze_liveness(
+                    camera_image
                 )
 
-            else:
-
-                st.image(
-                    image,
-                    channels="BGR",
-                    caption=liveness_photo.name,
-                    width=400
+                st.session_state.liveness_score = result.get(
+                    "score",
+                    0
                 )
 
-                if st.button(
-                    "📷 Check Liveness",
-                    type="primary"
+                st.session_state.liveness_result = result.get(
+                    "message",
+                    ""
+                )
+
+                st.metric(
+                    "Liveness Score",
+                    f"{result.get('score', 0)}/100"
+                )
+
+                if result.get(
+                    "live",
+                    False
                 ):
 
-                    try:
-
-                        result = analyze_liveness(
-                            image
+                    st.success(
+                        "✅ " +
+                        result.get(
+                            "message",
+                            "Live image detected."
                         )
+                    )
 
-                        result = safe_result(
-                            result
+                else:
+
+                    st.warning(
+                        "⚠️ " +
+                        result.get(
+                            "message",
+                            "Additional verification recommended."
                         )
+                    )
 
-                        score = result.get(
-                            "score",
-                            result.get(
-                                "liveness_score",
-                                result.get(
-                                    "confidence",
-                                    0
-                                )
-                            )
-                        )
+        if st.button(
+            "⏹️ Stop Camera"
+        ):
 
-                        score = safe_number(
-                            score
-                        )
+            st.session_state.liveness_started = False
 
-                        if score <= 1:
-
-                            score = score * 100
-
-                        score = round(
-                            min(
-                                max(
-                                    score,
-                                    0
-                                ),
-                                100
-                            ),
-                            2
-                        )
-
-                        st.session_state.liveness_score = score
-
-                        result_text = result.get(
-                            "result",
-                            result.get(
-                                "message",
-                                "Liveness analysis completed."
-                            )
-                        )
-
-                        st.session_state.liveness_result = (
-                            result_text
-                        )
-
-                        st.metric(
-                            "Liveness Score",
-                            f"{score}/100"
-                        )
-
-                        st.success(
-                            result_text
-                        )
-
-                    except Exception as e:
-
-                        st.error(
-                            f"Liveness error: {str(e)}"
-                        )
-
-        except Exception as e:
-
-            st.error(
-                f"Image processing error: {str(e)}"
-            )
+            st.rerun()
 
 
 # =========================================================
@@ -999,104 +825,107 @@ elif page == "📄 Document Verification":
     )
 
     st.write(
-        """
-        Upload an identity document and extract text using OCR.
-        """
+        "Upload a document image for OCR-based text extraction "
+        "and basic profile-name consistency checking."
     )
 
     tesseract_status = check_tesseract()
 
-    if tesseract_status.get(
-        "installed",
-        False
-    ):
+    if not tesseract_status["installed"]:
 
-        st.success(
-            "Tesseract OCR is available."
+        st.error(
+            "Tesseract OCR is not available."
+        )
+
+        st.code(
+            tesseract_status["message"]
         )
 
     else:
 
-        st.warning(
-            "Tesseract OCR is not available."
+        st.success(
+            "Tesseract OCR is ready."
         )
 
-    document = st.file_uploader(
-        "Upload document",
-        type=[
-            "jpg",
-            "jpeg",
-            "png",
-            "pdf"
-        ],
-        key="document_uploader"
-    )
+        if not st.session_state.profile_name:
 
-    if document is not None:
+            st.warning(
+                "Complete Profile Verification first."
+            )
 
-        st.write(
-            f"**Selected file:** {document.name}"
+        document_file = st.file_uploader(
+            "Upload document image",
+            type=[
+                "jpg",
+                "jpeg",
+                "png"
+            ],
+            key="document_upload"
         )
 
-        if st.button(
-            "📄 Verify Document",
-            type="primary"
-        ):
+        if document_file is not None:
 
-            try:
+            st.image(
+                document_file,
+                caption="Uploaded Document",
+                width=500
+            )
 
-                result = analyze_document(
-                    document
+            if st.button(
+                "📄 Verify Document",
+                type="primary"
+            ):
+
+                with st.spinner(
+                    "Reading document..."
+                ):
+
+                    result = analyze_document(
+                        document_file.getvalue(),
+                        st.session_state.profile_name
+                    )
+
+                st.session_state.document_result = result.get(
+                    "message",
+                    ""
                 )
 
-                result = safe_result(
-                    result,
-                    "Document analysis completed."
+                st.session_state.document_name_match = result.get(
+                    "name_found",
+                    False
                 )
 
-                document_result = result.get(
-                    "result",
+                st.session_state.document_text = result.get(
+                    "extracted_text",
+                    ""
+                )
+
+                if result.get(
+                    "valid",
+                    False
+                ):
+
+                    st.success(
+                        result["message"]
+                    )
+
+                else:
+
+                    st.warning(
+                        result["message"]
+                    )
+
+                st.subheader(
+                    "Extracted Text"
+                )
+
+                st.text_area(
+                    "OCR Result",
                     result.get(
-                        "message",
-                        "Document analysis completed."
-                    )
-                )
-
-                name_match = result.get(
-                    "name_match",
-                    result.get(
-                        "document_name_match",
-                        None
-                    )
-                )
-
-                st.session_state.document_result = (
-                    document_result
-                )
-
-                st.session_state.document_name_match = (
-                    name_match
-                )
-
-                st.success(
-                    document_result
-                )
-
-                if name_match is not None:
-
-                    st.write(
-                        "**Document Name Match:** "
-                        + (
-                            "Yes"
-                            if name_match
-                            else "No"
-                        )
-                    )
-
-            except Exception as e:
-
-                st.error(
-                    f"Document verification error: {str(e)}"
+                        "extracted_text",
+                        ""
+                    ),
+                    height=250
                 )
 
 
@@ -1107,98 +936,56 @@ elif page == "📄 Document Verification":
 elif page == "💬 Feedback Analysis":
 
     st.header(
-        "💬 Feedback Analysis"
+        "💬 Behavioral / Feedback Analysis"
+    )
+
+    st.info(
+        "This is a simple feedback-screening model. "
+        "It does not determine personality, character or intent."
     )
 
     feedback = st.text_area(
-        "Enter user feedback",
+        "Enter feedback or verification comments",
         height=150
     )
 
     if st.button(
-        "Analyze Feedback",
+        "🔎 Analyze Feedback",
         type="primary"
     ):
 
         if not feedback.strip():
 
             st.warning(
-                "Please enter feedback."
+                "Please enter some feedback."
             )
 
         else:
 
-            try:
+            result = analyze_feedback(
+                feedback
+            )
 
-                result = analyze_feedback(
-                    feedback
-                )
+            st.session_state.feedback_score = result[
+                "score"
+            ]
 
-                result = safe_result(
-                    result,
-                    "Feedback analysis completed."
-                )
+            st.session_state.feedback_result = result[
+                "category"
+            ]
 
-                score = result.get(
-                    "score",
-                    result.get(
-                        "feedback_score",
-                        0
-                    )
-                )
+            st.metric(
+                "Feedback Score",
+                f"{result['score']}/100"
+            )
 
-                score = safe_number(
-                    score
-                )
+            st.write(
+                f"**Category:** {result['category']}"
+            )
 
-                score = round(
-                    min(
-                        max(
-                            score,
-                            0
-                        ),
-                        100
-                    ),
-                    2
-                )
-
-                category = result.get(
-                    "category",
-                    result.get(
-                        "result",
-                        "General"
-                    )
-                )
-
-                message = result.get(
-                    "message",
-                    "Feedback analysis completed."
-                )
-
-                st.session_state.feedback_score = score
-
-                st.session_state.feedback_result = (
-                    category
-                )
-
-                st.metric(
-                    "Feedback Score",
-                    f"{score}/100"
-                )
-
-                st.write(
-                    f"**Category:** {category}"
-                )
-
-                st.write(
-                    message
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"Feedback analysis error: {str(e)}"
-                )
+            st.write(
+                result["message"]
+            )
 
 
 # =========================================================
@@ -1212,12 +999,10 @@ elif page == "💞 Matching":
     )
 
     st.info(
-        """
-        The verification modules provide evidence about
-        profile authenticity. Compatibility should be based
-        on user-selected preferences rather than the AI
-        verification score.
-        """
+        "The verification modules provide evidence about "
+        "profile authenticity. Compatibility should be based "
+        "on user-selected preferences rather than the AI "
+        "verification score."
     )
 
     if st.session_state.profile_name:
@@ -1397,47 +1182,39 @@ elif page == "📊 Dashboard":
             type="primary"
         ):
 
-            try:
+            record_id = save_verification(
 
-                record_id = save_verification(
+                name=st.session_state.profile_name,
 
-                    name=st.session_state.profile_name,
+                photo_name=st.session_state.profile_photo_name,
 
-                    photo_name=st.session_state.profile_photo_name,
+                face_similarity=st.session_state.face_score,
 
-                    face_similarity=st.session_state.face_score,
+                face_result=st.session_state.face_result,
 
-                    face_result=st.session_state.face_result,
+                deepfake_score=st.session_state.deepfake_score,
 
-                    deepfake_score=st.session_state.deepfake_score,
+                deepfake_result=st.session_state.deepfake_result,
 
-                    deepfake_result=st.session_state.deepfake_result,
+                liveness_score=st.session_state.liveness_score,
 
-                    liveness_score=st.session_state.liveness_score,
+                liveness_result=st.session_state.liveness_result,
 
-                    liveness_result=st.session_state.liveness_result,
+                document_result=st.session_state.document_result,
 
-                    document_result=st.session_state.document_result,
+                document_name_match=st.session_state.document_name_match,
 
-                    document_name_match=st.session_state.document_name_match,
+                feedback_score=st.session_state.feedback_score,
 
-                    feedback_score=st.session_state.feedback_score,
+                feedback_result=st.session_state.feedback_result
+            )
 
-                    feedback_result=st.session_state.feedback_result
-                )
+            st.session_state.verification_saved = True
 
-                st.session_state.verification_saved = True
-
-                st.success(
-                    f"Verification saved successfully. "
-                    f"Record ID: {record_id}"
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"Unable to save verification: {str(e)}"
-                )
+            st.success(
+                f"Verification saved successfully. "
+                f"Record ID: {record_id}"
+            )
 
     else:
 
@@ -1455,84 +1232,76 @@ elif page == "📊 Dashboard":
         "🗄️ Saved Verification Records"
     )
 
-    try:
+    records = get_all_verifications()
 
-        records = get_all_verifications()
+    if records:
 
-        if records:
+        for record in records:
 
-            for record in records:
+            with st.expander(
+                f"Record #{record['id']} — "
+                f"{record['name']} — "
+                f"{record['created_at']}"
+            ):
 
-                with st.expander(
-                    f"Record #{record['id']} — "
-                    f"{record['name']} — "
-                    f"{record['created_at']}"
-                ):
+                st.write(
+                    f"**Name:** {record['name']}"
+                )
 
-                    st.write(
-                        f"**Name:** {record['name']}"
-                    )
+                st.write(
+                    f"**Face Similarity:** "
+                    f"{record['face_similarity']}"
+                )
 
-                    st.write(
-                        f"**Face Similarity:** "
-                        f"{record['face_similarity']}"
-                    )
+                st.write(
+                    f"**Face Result:** "
+                    f"{record['face_result']}"
+                )
 
-                    st.write(
-                        f"**Face Result:** "
-                        f"{record['face_result']}"
-                    )
+                st.write(
+                    f"**Deepfake Risk:** "
+                    f"{record['deepfake_score']}"
+                )
 
-                    st.write(
-                        f"**Deepfake Risk:** "
-                        f"{record['deepfake_score']}"
-                    )
+                st.write(
+                    f"**Deepfake Result:** "
+                    f"{record['deepfake_result']}"
+                )
 
-                    st.write(
-                        f"**Deepfake Result:** "
-                        f"{record['deepfake_result']}"
-                    )
+                st.write(
+                    f"**Liveness Score:** "
+                    f"{record['liveness_score']}"
+                )
 
-                    st.write(
-                        f"**Liveness Score:** "
-                        f"{record['liveness_score']}"
-                    )
+                st.write(
+                    f"**Liveness Result:** "
+                    f"{record['liveness_result']}"
+                )
 
-                    st.write(
-                        f"**Liveness Result:** "
-                        f"{record['liveness_result']}"
-                    )
+                st.write(
+                    f"**Document:** "
+                    f"{record['document_result']}"
+                )
 
-                    st.write(
-                        f"**Document:** "
-                        f"{record['document_result']}"
-                    )
+                st.write(
+                    f"**Document Name Match:** "
+                    f"{'Yes' if record['document_name_match'] else 'No'}"
+                )
 
-                    st.write(
-                        f"**Document Name Match:** "
-                        f"{'Yes' if record['document_name_match'] else 'No'}"
-                    )
+                st.write(
+                    f"**Feedback Score:** "
+                    f"{record['feedback_score']}"
+                )
 
-                    st.write(
-                        f"**Feedback Score:** "
-                        f"{record['feedback_score']}"
-                    )
+                st.write(
+                    f"**Feedback:** "
+                    f"{record['feedback_result']}"
+                )
 
-                    st.write(
-                        f"**Feedback:** "
-                        f"{record['feedback_result']}"
-                    )
+    else:
 
-        else:
-
-            st.info(
-                "No verification records saved yet."
-            )
-
-    except Exception as e:
-
-        st.warning(
-            f"Unable to load saved records: {str(e)}"
+        st.info(
+            "No verification records saved yet."
         )
 
 
